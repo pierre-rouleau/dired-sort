@@ -1,4 +1,4 @@
-;;; dired-sort.el
+;;; dired-sort.el --- Sorting in Dired -*-lexical-binding: t-*-
 
 ;; Copyright (C) 2025 Mykhailo Kazarian
 
@@ -53,6 +53,9 @@
 
 ;;; Code:
 
+(require 'dired)
+(require 'cl-lib)   ; use: `cl-mapcar'
+
 (defgroup dired-sort nil
   "Toggle display of hidden files in Dired."
   :group 'dired)
@@ -79,7 +82,8 @@ This variable is buffer-local in Dired buffers."
       (insert dotdot))))
 
 (defun dired-sort--apply-listing ()
-  "Reapply Dired listing switches while preserving point and inserting `..` if needed."
+  "Reapply Dired listing switches.
+Preserve point and re-insert `..` if needed."
   (let ((pos (point)))
     (dired-sort-other dired-listing-switches)
     (dired-sort--insert-dot-dot)
@@ -274,7 +278,8 @@ This variable is buffer-local in Dired buffers."
    indexed))
 
 (defun dired-sort-show-completion ()
-  "Show a completion menu of Dired sort commands with numbers and execute the selected one."
+  "Show completion menu of Dired sort commands. Execute selected one.
+Each command is identified by a number."
   (interactive)
   (let* ((indexed (dired-sort--indexed-commands))
          (num-width (length (number-to-string (length indexed))))
