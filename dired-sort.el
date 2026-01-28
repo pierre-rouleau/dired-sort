@@ -1,6 +1,6 @@
-;;; dired-sort.el
+;;; dired-sort.el -*- lexical-binding: t -*-
 
-;; Copyright (C) 2025 Mykhailo Kazarian
+;; Copyright (C) 2025, 2026 Mykhailo Kazarian
 
 ;; Author: Your Name <michael.kazarian@gmail.com>
 ;; Version: 0.1
@@ -30,28 +30,27 @@
 ;; Usage:
 ;;
 ;; 1. Install and enable the mode:
-;;
+;;    (add-to-list 'load-path "/path/to/dired-sort/")
 ;;    (require 'dired-sort)
 ;;    (dired-sort-mode 1)
 ;;
-;; 2. Bind keys or use commands directly:
+;; 2. Use commands or menu (default bindings):
+;;    - `C-c m`   : Show sort command menu (recommended)
+;;    - `C-c c`   : Show sort completion (for fans of Helm/Ivy/Vertico)
+;;    - `M-g h`   : Toggle hidden files
+;;    - `M-g n/d/x`: Sort by Name/Date/eXtension
 ;;
-;;    - `M-x dired-sort-toggle-hidden`
-;;    - `M-x dired-sort-show-menu`
-;;    - `M-x dired-sort-show-completion`
-;;    - `M-x dired-sort-by-name`, `...-reverse`, `...-by-date`, etc.
-;;
-;; 3. Optional: bind your preferred keymap (automatically set if using `dired-sort-setup-keys`)
-;;
-;;    Example:
-;;      (with-eval-after-load 'dired
-;;        (dired-sort-setup-keys)
-;;        (define-key dired-mode-map (kbd "C-c m") #'dired-sort-show-menu)
-;;        (define-key dired-mode-map (kbd "C-c c") #'dired-sort-show-completion))
+;; 3. Customize keybindings (optional):
+;;    Since the mode uses `dired-sort-mode-map`, you can rebind keys like this:
+;;    (define-key dired-sort-mode-map (kbd "C-c s") #'dired-sort-show-menu)
 ;;
 ;; Sorting is updated live, and menu reflects current active mode with an asterisk.
 
 ;;; Code:
+
+(require 'dired)
+(require 'cl-lib)
+(require 'subr-x)
 
 (defgroup dired-sort nil
   "Toggle display of hidden files in Dired."
@@ -79,7 +78,8 @@ This variable is buffer-local in Dired buffers."
       (insert dotdot))))
 
 (defun dired-sort--apply-listing ()
-  "Reapply Dired listing switches while preserving point and inserting `..` if needed."
+  "Reapply Dired listing switches.
+Preserve point and re-insert `..` if needed."
   (let ((pos (point)))
     (dired-sort-other dired-listing-switches)
     (dired-sort--insert-dot-dot)
@@ -132,7 +132,6 @@ This variable is buffer-local in Dired buffers."
   (setq dired-sort-extra-switches "-X -r")
   (dired-sort--setup))
 
-
 (defun dired-sort-by-date ()
   "Sort by modification time (oldest first)."
   (interactive)
@@ -162,16 +161,6 @@ This variable is buffer-local in Dired buffers."
   (when (eq major-mode 'dired-mode)
     (dired-sort--setup)))
 
-;;;###autoload
-(define-minor-mode dired-sort-mode
-  "Minor mode to toggle hidden files visibility in Dired."
-  :global t
-  :group 'dired-sort
-  :lighter " DSort"
-  (if dired-sort-mode
-      (add-hook 'buffer-list-update-hook #'dired-sort--maybe-setup)
-    (remove-hook 'buffer-list-update-hook #'dired-sort--maybe-setup)))
-
 (defconst dired-sort--commands-map
   '((dired-sort-by-name              "M-g n"   "Sort by name")
     (dired-sort-by-name-reverse      "M-g r n" "Sort by name (reverse)")
@@ -180,7 +169,29 @@ This variable is buffer-local in Dired buffers."
     (dired-sort-by-extension         "M-g x"   "Sort by extension")
     (dired-sort-by-extension-reverse "M-g r x" "Sort by extension (reverse)")
     (dired-sort-toggle-hidden        "M-g h"   "Toggle hidden files")
-    (dired-sort-show-menu            "C-c m"   "Show sort command menu")))
+    (dired-sort-show-menu            "C-c m"   "Show sort command menu")
+    (dired-sort-show-completion      "C-c c"   "Show sort completion")))
+
+(defvar dired-sort-mode-map
+  (let ((map (make-sparse-keymap)))
+    (dolist (entry dired-sort--commands-map)
+      (let ((fn (nth 0 entry))
+            (key (nth 1 entry)))
+        (when (and fn key)
+          (define-key map (kbd key) fn))))
+    map)
+  "Keymap for `dired-sort-mode'.")
+
+;;;###autoload
+(define-minor-mode dired-sort-mode
+  "Minor mode to toggle hidden files visibility in Dired."
+  :global t
+  :group 'dired-sort
+  :lighter " DSort"
+  :keymap dired-sort-mode-map
+  (if dired-sort-mode
+      (add-hook 'buffer-list-update-hook #'dired-sort--maybe-setup)
+    (remove-hook 'buffer-list-update-hook #'dired-sort--maybe-setup)))
 
 (defun dired-sort--active-p (fn)
   "Return non-nil if FN represents current sort state."
@@ -274,7 +285,8 @@ This variable is buffer-local in Dired buffers."
    indexed))
 
 (defun dired-sort-show-completion ()
-  "Show a completion menu of Dired sort commands with numbers and execute the selected one."
+  "Show a completion menu of Dired sort commands. Execute selected one.
+Each command is identified by a number."
   (interactive)
   (let* ((indexed (dired-sort--indexed-commands))
          (num-width (length (number-to-string (length indexed))))
@@ -283,18 +295,6 @@ This variable is buffer-local in Dired buffers."
          (choice (completing-read "Choose sort option: " candidates nil t)))
     (when-let ((fn (cdr (assoc choice candidates))))
       (call-interactively fn))))
-
-(defun dired-sort-setup-keys ()
-  "Bind keys from `dired-sort--commands-map` in `dired-mode-map`."
-  (dolist (entry dired-sort--commands-map)
-    (let ((fn (nth 0 entry))
-          (key (nth 1 entry)))
-      (when (and fn key)
-        (define-key dired-mode-map (kbd key) fn)))))
-
-(with-eval-after-load 'dired
-  (dired-sort-setup-keys)
-  (define-key dired-mode-map (kbd "C-c c") #'dired-sort-show-completion))
 
 (provide 'dired-sort)
 
